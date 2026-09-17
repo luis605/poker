@@ -36,3 +36,33 @@ func NewCard(rank Bitmap, suit Bitmap) Card {
 		Naipe:    suit,
 	}
 }
+
+func (card Card) ToString() string {
+	rank := "?"
+	suit := "?"
+
+	switch card.CardType {
+		case RankTwo: rank = "2"
+		case RankThree: rank = "3"
+		case RankFour: rank = "4"
+		case RankFive: rank = "5"
+		case RankSix: rank = "6"
+		case RankSeven: rank = "7"
+		case RankEight: rank = "8"
+		case RankNine: rank = "9"
+		case RankTen: rank = "10"
+		case RankJack: rank = "J"
+		case RankQueen: rank = "Q"
+		case RankKing: rank = "K"
+		case RankAce: rank = "A"
+	}
+
+	switch card.Naipe {
+		case SuitClubs: suit = "♣";
+		case SuitDiamonds: suit = "♦";
+		case SuitHearts: suit = "♥";
+		case SuitSpades: suit = "♠";
+	}
+
+	return rank + suit
+}
