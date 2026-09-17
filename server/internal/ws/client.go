@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"log"
 	"time"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
@@ -17,7 +18,7 @@ import (
 const (
 	writeWait = 10 * time.Second
 	pongWait = 60 * time.Second
-	pingPeriod = pongWait - 6
+	pingPeriod = pongWait - 6 * time.Second
 	maxMessageSize = 512
 )
 
@@ -30,6 +31,7 @@ type Client struct {
 	hub *Hub
 	conn *websocket.Conn
 	send chan []byte
+	closeOnce sync.Once
 }
 
 func NewClient(hub *Hub, conn *websocket.Conn) *Client {
@@ -41,9 +43,13 @@ func NewClient(hub *Hub, conn *websocket.Conn) *Client {
 }
 
 func (c *Client) readPump() {
-	defer func() { // When the client exits or loses connection.
-		c.hub.unregister <- c
-		c.conn.Close()
+	// safely remove user when the client exits or loses connection.
+	defer func() {
+		select {
+		case c.hub.unregister <- c:
+		default:
+		}
+		c.Close()
 	}()
 	c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -65,7 +71,7 @@ func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
-		c.conn.Close()
+		c.Close()
 	}()
 	for {
 		select {
@@ -98,4 +104,11 @@ func (c *Client) writePump() {
 			}
 		}
 	}
+}
+
+func (c *Client) Close() {
+	c.closeOnce.Do(func() {
+		close(c.send)
+		c.conn.Close()
+	})
 }

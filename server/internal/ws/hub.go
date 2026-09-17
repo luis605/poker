@@ -29,8 +29,8 @@ func (h *Hub) Run(ctx context.Context) {
 		case <-ctx.Done():
 			// Clean up clients on shutdown
 			for client := range h.clients {
-				close(client.send)
 				delete(h.clients, client)
+				client.Close()
 			}
 			return
 
@@ -40,7 +40,7 @@ func (h *Hub) Run(ctx context.Context) {
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
-				close(client.send)
+				client.Close()
 			}
 
 		case message := <-h.broadcast:
@@ -48,8 +48,8 @@ func (h *Hub) Run(ctx context.Context) {
 				select {
 				case client.send <- message:
 				default:
-					close(client.send)
-					delete(h.clients, client)
+				delete(h.clients, client)
+				client.Close()
 				}
 			}
 		}
