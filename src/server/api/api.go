@@ -2,6 +2,7 @@ package api
 
 import (
 	"log"
+	"poker_server/api/rooms"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,7 +21,10 @@ func mapRoutes(router *gin.Engine) {
 	api := router.Group("/api")
 	{
 		// Rooms
-		api.POST("create-room", createRoom)
-		api.GET("active-rooms", getActiveRooms)
+		api.POST("create-room", rooms.CreateRoom)
+		api.GET("active-rooms", rooms.GetActiveRooms)
+		api.POST("join-room", rooms.JoinRoom)
+		api.DELETE("delete-room", rooms.DeleteRoom)
+		api.POST("exit-room", rooms.ExitRoom)
 	}
 }
