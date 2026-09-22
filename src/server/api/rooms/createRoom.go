@@ -28,6 +28,11 @@ func CreateRoom(c *gin.Context) {
 			return
 		}
 
+		if len(input.Password) > 72 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Password is too long"})
+			return
+		}
+
 		var err error
 		hashedPassword, err = helpers.HashPassword(input.Password)
 		if err != nil {
