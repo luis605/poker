@@ -21,6 +21,16 @@ func DeleteRoom(c *gin.Context) {
 		return
 	}
 
+	room := store.rooms[query.ID]
+	username, ok := authenticatedRoomUsername(c, room)
+	if !ok {
+		return
+	}
+	if username != room.HostUsername {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only the room host can delete this room"})
+		return
+	}
+
 	delete(store.rooms, query.ID)
 
 	c.JSON(http.StatusOK, gin.H{

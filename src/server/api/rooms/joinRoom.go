@@ -43,6 +43,9 @@ func JoinRoom(c *gin.Context) {
 	if room.Players == nil {
 		room.Players = make(map[string]bool)
 	}
+	if room.Sessions == nil {
+		room.Sessions = make(map[string]string)
+	}
 
 	// 4. Check if player is already inside the room (PREVENT JOINING TWICE)
 	if room.Players[input.Username] {
@@ -78,14 +81,28 @@ func JoinRoom(c *gin.Context) {
 	}
 
 	// 7. Update room state: register user and sync count
+	if room.HostUsername == "" {
+		room.HostUsername = input.Username
+	}
+
+	sessionToken, err := generateRoomSessionToken()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to initialize room session",
+		})
+		return
+	}
+
 	room.Players[input.Username] = true
+	room.Sessions[sessionToken] = input.Username
 	room.PlayerCount = len(room.Players)
 	store.rooms[query.ID] = room
 
 	// 8. Respond with sanitized room details
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Successfully joined the room",
-		"player":  input.Username,
-		"room":    toRoomResponse(room),
+		"message":      "Successfully joined the room",
+		"player":       input.Username,
+		"sessionToken": sessionToken,
+		"room":         toRoomResponse(room),
 	})
 }

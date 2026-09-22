@@ -7,6 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const maxBCryptPasswordBytes = 72
+
 func CreateRoom(c *gin.Context) {
 	var input CreateRoomInput
 
@@ -19,6 +21,10 @@ func CreateRoom(c *gin.Context) {
 	if input.IsPrivate {
 		if input.Password == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Password is required for private rooms"})
+			return
+		}
+		if len([]byte(input.Password)) > maxBCryptPasswordBytes {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be 72 bytes or fewer"})
 			return
 		}
 
@@ -39,6 +45,7 @@ func CreateRoom(c *gin.Context) {
 		IsPrivate:    input.IsPrivate,
 		PasswordHash: hashedPassword,
 		Players:      make(map[string]bool),
+		Sessions:     make(map[string]string),
 	}
 
 	store.mu.Lock()

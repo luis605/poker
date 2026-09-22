@@ -1,6 +1,8 @@
 package rooms
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"sync"
 	"sync/atomic"
 )
@@ -12,7 +14,9 @@ type Room struct {
 	PlayerLimit  int             `json:"playerLimit"`
 	IsPrivate    bool            `json:"isPrivate"`
 	PasswordHash string          `json:"-"` // Renamed from Password to match usage
+	HostUsername string          `json:"-"`
 	Players      map[string]bool `json:"-"`
+	Sessions     map[string]string
 }
 
 type RoomResponse struct {
@@ -64,4 +68,13 @@ func toRoomResponse(room Room) RoomResponse {
 		PlayerLimit: room.PlayerLimit,
 		IsPrivate:   room.IsPrivate,
 	}
+}
+
+func generateRoomSessionToken() (string, error) {
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(tokenBytes), nil
 }

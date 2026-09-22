@@ -13,12 +13,6 @@ func ExitRoom(c *gin.Context) {
 		return
 	}
 
-	var input ExitRoomInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
-		return
-	}
-
 	store.mu.Lock()
 	defer store.mu.Unlock()
 
@@ -28,18 +22,25 @@ func ExitRoom(c *gin.Context) {
 		return
 	}
 
-	if !room.Players[input.Username] {
+	username, ok := authenticatedRoomUsername(c, room)
+	if !ok {
+		return
+	}
+
+	if !room.Players[username] {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Player is not in the room"})
 		return
 	}
 
-	delete(room.Players, input.Username)
+	sessionToken := c.GetHeader(roomSessionHeader)
+	delete(room.Players, username)
+	delete(room.Sessions, sessionToken)
 	room.PlayerCount = len(room.Players)
 	store.rooms[query.ID] = room
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Successfully exited the room",
-		"player":  input.Username,
+		"player":  username,
 		"room":    toRoomResponse(room),
 	})
 }
