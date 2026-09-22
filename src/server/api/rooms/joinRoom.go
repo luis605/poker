@@ -7,102 +7,94 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Bind query parameters (?id=2)
+// required,gt=0 enforces a present positive room ID and rejects missing/zero/negative values.
 type JoinRoomQuery struct {
 	ID int64 `form:"id" binding:"required,gt=0"`
 }
 
-func JoinRoom(c *gin.Context) {
-	// 1. Read query param (?id=...)
+func JoinRoom(ctx *gin.Context) {
 	var query JoinRoomQuery
-	if err := c.ShouldBindQuery(&query); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing or invalid ?id parameter"})
+	if err := ctx.ShouldBindQuery(&query); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Missing or invalid ?id parameter"})
 		return
 	}
 
-	// 2. Read body
 	var input JoinRoomInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
 		return
 	}
 
-	store.mu.Lock()
-	defer store.mu.Unlock()
-
-	// 3. Look up by query.ID
+	store.mutex.RLock()
 	room, exists := store.rooms[query.ID]
+	store.mutex.RUnlock()
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
 		return
 	}
 
-	// --- SAFETY CHECKS ---
+	if room.IsPrivate && input.Password == "" {
+		ctx.JSON(http.StatusUnauthorized, gin.H{
+			"error": "This room is private. A password is required",
+		})
+		return
+	}
+	if room.IsPrivate && !helpers.CheckPasswordHash(input.Password, room.PasswordHash) {
+		ctx.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Incorrect room password",
+		})
+		return
+	}
 
-	// Defensive check: ensure the map is initialized
+	sessionToken, err := generateRoomSessionToken()
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to initialize room session",
+		})
+		return
+	}
+
+	store.mutex.Lock()
+	room, exists = store.rooms[query.ID]
+	if !exists {
+		store.mutex.Unlock()
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
+		return
+	}
 	if room.Players == nil {
 		room.Players = make(map[string]bool)
 	}
 	if room.Sessions == nil {
 		room.Sessions = make(map[string]string)
 	}
-
-	// 4. Check if player is already inside the room (PREVENT JOINING TWICE)
 	if room.Players[input.Username] {
-		c.JSON(http.StatusConflict, gin.H{
+		store.mutex.Unlock()
+		ctx.JSON(http.StatusConflict, gin.H{
 			"error": "Someone already has this username in this room",
 		})
 		return
 	}
-
-	// 5. Check room capacity
 	if room.PlayerCount >= room.PlayerLimit {
-		c.JSON(http.StatusConflict, gin.H{
+		store.mutex.Unlock()
+		ctx.JSON(http.StatusConflict, gin.H{
 			"error": "Room is already full",
 		})
 		return
 	}
-
-	// 6. Check privacy & password verification
-	if room.IsPrivate {
-		if input.Password == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "This room is private. A password is required",
-			})
-			return
-		}
-
-		if !helpers.CheckPasswordHash(input.Password, room.PasswordHash) {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "Incorrect room password",
-			})
-			return
-		}
-	}
-
-	// 7. Update room state: register user and sync count
 	if room.HostUsername == "" {
 		room.HostUsername = input.Username
 	}
-
-	sessionToken, err := generateRoomSessionToken()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to initialize room session",
-		})
-		return
-	}
-
 	room.Players[input.Username] = true
 	room.Sessions[sessionToken] = input.Username
 	room.PlayerCount = len(room.Players)
 	store.rooms[query.ID] = room
+	responseRoom := toRoomResponse(room)
+	store.mutex.Unlock()
 
-	// 8. Respond with sanitized room details
-	c.JSON(http.StatusOK, gin.H{
+	ctx.JSON(http.StatusOK, gin.H{
 		"message":      "Successfully joined the room",
 		"player":       input.Username,
 		"sessionToken": sessionToken,
-		"room":         toRoomResponse(room),
+		"room":         responseRoom,
 	})
 }

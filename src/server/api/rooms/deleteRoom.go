@@ -6,34 +6,49 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func DeleteRoom(c *gin.Context) {
+func DeleteRoom(ctx *gin.Context) {
 	var query JoinRoomQuery
-	if err := c.ShouldBindQuery(&query); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing or invalid ?id parameter"})
+	if err := ctx.ShouldBindQuery(&query); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Missing or invalid ?id parameter"})
 		return
 	}
 
-	store.mu.Lock()
-	defer store.mu.Unlock()
-
-	if _, exists := store.rooms[query.ID]; !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
+	store.mutex.RLock()
+	room, exists := store.rooms[query.ID]
+	store.mutex.RUnlock()
+	if !exists {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
 		return
 	}
 
-	room := store.rooms[query.ID]
-	username, ok := authenticatedRoomUsername(c, room)
+	sessionToken, ok := roomSessionToken(ctx)
 	if !ok {
 		return
 	}
+
+	store.mutex.Lock()
+	room, exists = store.rooms[query.ID]
+	if !exists {
+		store.mutex.Unlock()
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
+		return
+	}
+	username, ok := authenticatedRoomUsername(room, sessionToken)
+	if !ok {
+		store.mutex.Unlock()
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid room session token"})
+		return
+	}
 	if username != room.HostUsername {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Only the room host can delete this room"})
+		store.mutex.Unlock()
+		ctx.JSON(http.StatusForbidden, gin.H{"error": "Only the room host can delete this room"})
 		return
 	}
 
 	delete(store.rooms, query.ID)
+	store.mutex.Unlock()
 
-	c.JSON(http.StatusOK, gin.H{
+	ctx.JSON(http.StatusOK, gin.H{
 		"message": "Room deleted successfully",
 	})
 }

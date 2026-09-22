@@ -6,41 +6,54 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func ExitRoom(c *gin.Context) {
+func ExitRoom(ctx *gin.Context) {
 	var query JoinRoomQuery
-	if err := c.ShouldBindQuery(&query); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing or invalid ?id parameter"})
+	if err := ctx.ShouldBindQuery(&query); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Missing or invalid ?id parameter"})
 		return
 	}
 
-	store.mu.Lock()
-	defer store.mu.Unlock()
-
+	store.mutex.RLock()
 	room, exists := store.rooms[query.ID]
+	store.mutex.RUnlock()
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
 		return
 	}
 
-	username, ok := authenticatedRoomUsername(c, room)
+	sessionToken, ok := roomSessionToken(ctx)
 	if !ok {
 		return
 	}
 
-	if !room.Players[username] {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Player is not in the room"})
+	store.mutex.Lock()
+	room, exists = store.rooms[query.ID]
+	if !exists {
+		store.mutex.Unlock()
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
 		return
 	}
-
-	sessionToken := c.GetHeader(roomSessionHeader)
+	username, ok := authenticatedRoomUsername(room, sessionToken)
+	if !ok {
+		store.mutex.Unlock()
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid room session token"})
+		return
+	}
+	if !room.Players[username] {
+		store.mutex.Unlock()
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "Player is not in the room"})
+		return
+	}
 	delete(room.Players, username)
 	delete(room.Sessions, sessionToken)
 	room.PlayerCount = len(room.Players)
 	store.rooms[query.ID] = room
+	responseRoom := toRoomResponse(room)
+	store.mutex.Unlock()
 
-	c.JSON(http.StatusOK, gin.H{
+	ctx.JSON(http.StatusOK, gin.H{
 		"message": "Successfully exited the room",
 		"player":  username,
-		"room":    toRoomResponse(room),
+		"room":    responseRoom,
 	})
 }

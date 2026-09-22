@@ -13,7 +13,7 @@ type Room struct {
 	PlayerCount  int             `json:"playerCount"`
 	PlayerLimit  int             `json:"playerLimit"`
 	IsPrivate    bool            `json:"isPrivate"`
-	PasswordHash string          `json:"-"` // Renamed from Password to match usage
+	PasswordHash string          `json:"-"`
 	HostUsername string          `json:"-"`
 	Players      map[string]bool `json:"-"`
 	Sessions     map[string]string
@@ -47,7 +47,7 @@ type ExitRoomInput struct {
 }
 
 type RoomStore struct {
-	mu     sync.RWMutex
+	mutex  sync.RWMutex
 	rooms  map[int64]Room
 	nextID atomic.Int64
 }

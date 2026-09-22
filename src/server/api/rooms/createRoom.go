@@ -9,34 +9,29 @@ import (
 
 const maxBCryptPasswordBytes = 72
 
-func CreateRoom(c *gin.Context) {
+func CreateRoom(ctx *gin.Context) {
 	var input CreateRoomInput
 
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	var hashedPassword string
+	if input.IsPrivate && input.Password == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Password is required for private rooms"})
+		return
+	}
 	if input.IsPrivate {
-		if input.Password == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Password is required for private rooms"})
-			return
-		}
 		if len([]byte(input.Password)) > maxBCryptPasswordBytes {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be 72 bytes or fewer"})
-			return
-		}
-
-		if len(input.Password) > 72 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Password is too long"})
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "Password must be 72 bytes or fewer"})
 			return
 		}
 
 		var err error
 		hashedPassword, err = helpers.HashPassword(input.Password)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to secure password"})
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to secure password"})
 			return
 		}
 	}
@@ -53,11 +48,11 @@ func CreateRoom(c *gin.Context) {
 		Sessions:     make(map[string]string),
 	}
 
-	store.mu.Lock()
+	store.mutex.Lock()
 	store.rooms[room.ID] = room
-	store.mu.Unlock()
+	store.mutex.Unlock()
 
-	c.JSON(http.StatusCreated, gin.H{
+	ctx.JSON(http.StatusCreated, gin.H{
 		"message": "Room created successfully",
 		"room":    toRoomResponse(room),
 	})
